@@ -1,0 +1,55 @@
+variant: flatcar
+version: 1.1.0
+storage:
+  directories:
+    - path: /opt/bin
+      mode: 0755
+systemd:
+  units:
+    - name: install-k3s.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Install K3s
+        Wants=network-online.target
+        After=network-online.target
+        ConditionPathExists=!/opt/bin/k3s
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        ExecStartPre=/usr/bin/mkdir -p /opt/bin
+        ExecStart=/usr/bin/curl -sfL https://github.com/k3s-io/k3s/releases/download/v1.30.2%2Bk3s1/k3s -o /opt/bin/k3s
+        ExecStartPost=/usr/bin/chmod +x /opt/bin/k3s
+
+        [Install]
+        WantedBy=multi-user.target
+    - name: k3s.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Lightweight Kubernetes
+        Documentation=https://k3s.io
+        Wants=network-online.target install-k3s.service
+        After=network-online.target install-k3s.service
+
+        [Service]
+        Type=notify
+        EnvironmentFile=-/etc/default/%N
+        Environment=IT_K3S_NODE_NAME=%H
+        Environment=O_K3S_DATA_DIR=/var/lib/rancher/k3s
+        ExecStartPre=-/sbin/modprobe br_netfilter
+        ExecStartPre=-/sbin/modprobe overlay
+        ExecStart=/opt/bin/k3s server
+        KillMode=process
+        Delegate=yes
+        LimitNOFILE=1048576
+        LimitNPROC=infinity
+        LimitCORE=infinity
+        TasksMax=infinity
+        TimeoutStartSec=0
+        Restart=always
+        RestartSec=5s
+
+        [Install]
+        WantedBy=multi-user.target

@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devops-flex-api
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: devops-flex-api
+  template:
+    metadata:
+      labels:
+        app: devops-flex-api
+    spec:
+      containers:
+      - name: api
+        image: shipitdev/devops-flex-api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080

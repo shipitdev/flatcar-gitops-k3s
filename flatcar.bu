@@ -53,3 +53,24 @@ systemd:
 
         [Install]
         WantedBy=multi-user.target
+    - name: flux-bootstrap.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Bootstrap FluxCD
+        Wants=k3s.service
+        After=k3s.service
+        ConditionPathExists=!/opt/flux-installed
+
+        [Service]
+        Type=oneshot
+        Environment=KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+        ExecStartPre=/usr/bin/sleep 30
+        ExecStart=/opt/bin/k3s kubectl apply -f https://github.com/fluxcd/flux2/releases/latest/download/install.yaml
+        ExecStartPost=/usr/bin/sleep 15
+        ExecStartPost=/opt/bin/k3s kubectl create source git devops-flex --url=https://github.com/shipitdev/flatcar-gitops-k3s --branch=master --interval=1m
+        ExecStartPost=/opt/bin/k3s kubectl create kustomization devops-flex --source=devops-flex --path="./k8s" --prune=true --interval=1m
+        ExecStartPost=/usr/bin/touch /opt/flux-installed
+
+        [Install]
+        WantedBy=multi-user.target

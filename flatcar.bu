@@ -10,7 +10,7 @@ systemd:
       enabled: true
       contents: |
         [Unit]
-        Description=Install K3s
+        Description=Download & Install Multi-Arch K3s Binary
         Wants=network-online.target
         After=network-online.target
         ConditionPathExists=!/opt/bin/k3s
@@ -19,7 +19,7 @@ systemd:
         Type=oneshot
         RemainAfterExit=yes
         ExecStartPre=/usr/bin/mkdir -p /opt/bin
-        ExecStart=/usr/bin/curl -sfL https://github.com/k3s-io/k3s/releases/download/v1.30.2%2Bk3s1/k3s -o /opt/bin/k3s
+        ExecStart=/bin/sh -c 'ARCH=$(uname -m); if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then SUFFIX="-arm64"; else SUFFIX=""; fi; /usr/bin/curl -sfL "https://github.com/k3s-io/k3s/releases/download/v1.31.5%2Bk3s1/k3s$SUFFIX" -o /opt/bin/k3s'
         ExecStartPost=/usr/bin/chmod +x /opt/bin/k3s
 
         [Install]
@@ -28,7 +28,7 @@ systemd:
       enabled: true
       contents: |
         [Unit]
-        Description=Lightweight Kubernetes
+        Description=Lightweight Kubernetes Server (K3s)
         Documentation=https://k3s.io
         Wants=network-online.target install-k3s.service
         After=network-online.target install-k3s.service
@@ -36,11 +36,11 @@ systemd:
         [Service]
         Type=notify
         EnvironmentFile=-/etc/default/%N
-        Environment=IT_K3S_NODE_NAME=%H
-        Environment=O_K3S_DATA_DIR=/var/lib/rancher/k3s
+        Environment=K3S_NODE_NAME=%H
+        Environment=K3S_DATA_DIR=/var/lib/rancher/k3s
         ExecStartPre=-/sbin/modprobe br_netfilter
         ExecStartPre=-/sbin/modprobe overlay
-        ExecStart=/opt/bin/k3s server
+        ExecStart=/opt/bin/k3s server --write-kubeconfig-mode 644
         KillMode=process
         Delegate=yes
         LimitNOFILE=1048576
@@ -57,7 +57,7 @@ systemd:
       enabled: true
       contents: |
         [Unit]
-        Description=Bootstrap FluxCD
+        Description=Bootstrap FluxCD GitOps Controller
         Wants=k3s.service
         After=k3s.service
         ConditionPathExists=!/opt/flux-installed
@@ -65,9 +65,9 @@ systemd:
         [Service]
         Type=oneshot
         Environment=KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-        ExecStartPre=/usr/bin/sleep 30
+        ExecStartPre=/bin/sh -c 'echo "Waiting for K3s API server ready..."; until /opt/bin/k3s kubectl get nodes; do sleep 3; done'
         ExecStart=/opt/bin/k3s kubectl apply -f https://github.com/fluxcd/flux2/releases/latest/download/install.yaml
-        ExecStartPost=/usr/bin/sleep 15
+        ExecStartPost=/bin/sh -c 'echo "Waiting for Flux controllers ready..."; until /opt/bin/k3s kubectl -n flux-system get deployment kustomize-controller; do sleep 3; done'
         ExecStartPost=/opt/bin/k3s kubectl create source git devops-flex --url=https://github.com/shipitdev/flatcar-gitops-k3s --branch=master --interval=1m
         ExecStartPost=/opt/bin/k3s kubectl create kustomization devops-flex --source=devops-flex --path="./k8s" --prune=true --interval=1m
         ExecStartPost=/usr/bin/touch /opt/flux-installed

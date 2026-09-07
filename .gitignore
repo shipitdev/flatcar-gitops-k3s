@@ -1,2 +1,10 @@
 *.md
 !README.md
+config.ign
+*.img
+*.img.bz2
+flatcar_production_qemu.sh
+flatcar_production_qemu_*
+devops-flex-api
+.DS_Store
+coverage.txt

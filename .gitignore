@@ -8,3 +8,4 @@ flatcar_production_qemu_*
 devops-flex-api
 .DS_Store
 coverage.txt
+.github/

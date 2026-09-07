@@ -1,0 +1,17 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: devops-flex-api-monitor
+  namespace: default
+  labels:
+    app: devops-flex-api
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: devops-flex-api
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s

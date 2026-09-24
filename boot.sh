@@ -14,10 +14,10 @@ ARCH="$(uname -m)"
 
 if [ "${ARCH}" = "arm64" ] || [ "${ARCH}" = "aarch64" ]; then
     FLATCAR_ARCH="arm64-usr"
-    QEMU_ARCH="aarch64"
+    IMAGE_PREFIX="flatcar_production_qemu_uefi"
 else
     FLATCAR_ARCH="amd64-usr"
-    QEMU_ARCH="x86_64"
+    IMAGE_PREFIX="flatcar_production_qemu"
 fi
 
 echo "Detected Host OS: ${OS} (${ARCH}) -> Target Flatcar Arch: ${FLATCAR_ARCH}"
@@ -40,13 +40,13 @@ echo "✓ Generated config.ign successfully."
 CHANNEL="stable"
 BASE_URL="https://${CHANNEL}.release.flatcar-linux.net/${FLATCAR_ARCH}/current"
 
-if [ ! -f flatcar_production_qemu.sh ]; then
-    echo "==> Fetching flatcar_production_qemu.sh..."
-    curl -fsSL "${BASE_URL}/flatcar_production_qemu.sh" -o flatcar_production_qemu.sh
-    chmod +x flatcar_production_qemu.sh
+if [ ! -f "${IMAGE_PREFIX}.sh" ]; then
+    echo "==> Fetching ${IMAGE_PREFIX}.sh..."
+    curl -fsSL "${BASE_URL}/${IMAGE_PREFIX}.sh" -o "${IMAGE_PREFIX}.sh"
+    chmod +x "${IMAGE_PREFIX}.sh"
 fi
 
-IMG_NAME="flatcar_production_qemu_image.img"
+IMG_NAME="${IMAGE_PREFIX}_image.img"
 if [ ! -f "${IMG_NAME}" ]; then
     echo "==> Downloading Flatcar QEMU image for ${FLATCAR_ARCH} (this may take a few moments)..."
     curl -fsSL "${BASE_URL}/${IMG_NAME}.bz2" -o "${IMG_NAME}.bz2"
@@ -54,8 +54,16 @@ if [ ! -f "${IMG_NAME}" ]; then
     echo "✓ Image ready: ${IMG_NAME}"
 fi
 
+if [ "${FLATCAR_ARCH}" = "arm64-usr" ]; then
+    for FIRMWARE in "${IMAGE_PREFIX}_efi_code.qcow2" "${IMAGE_PREFIX}_efi_vars.qcow2"; do
+        if [ ! -f "${FIRMWARE}" ]; then
+            curl -fsSL "${BASE_URL}/${FIRMWARE}" -o "${FIRMWARE}"
+        fi
+    done
+fi
+
 # 4. Launch Flatcar VM
-# Maps host port 8080 -> guest port 8080 (Go App / Metrics) and host port 6443 -> guest 6443 (Kubernetes API)
+# Maps host port 8080 to the Kubernetes NodePort.
 echo "=========================================================="
 echo " 🌟 Booting Flatcar K3s Cluster in QEMU"
 echo "    - Web Service:  http://localhost:8080"
@@ -63,11 +71,9 @@ echo "    - Metrics:      http://localhost:8080/metrics"
 echo "    - Health Probe: http://localhost:8080/healthz"
 echo "=========================================================="
 
-./flatcar_production_qemu.sh \
+./"${IMAGE_PREFIX}.sh" \
     -i config.ign \
-    -m 2048 \
-    -c 2 \
-    -nographic \
-    -p 8080:8080 \
-    -p 6443:6443 \
+    -M 4096 \
+    -f 8080:30080 \
+    -- -snapshot -smp 2 -nographic \
     "$@"

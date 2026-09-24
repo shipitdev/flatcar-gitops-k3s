@@ -97,14 +97,14 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 
 	env := os.Getenv("APP_ENV")
 	if env == "" {
-		env = "production"
+		env = "local"
 	}
 
 	res := Response{
-		Message:     "Flatcar GitOps K3s Cluster: Enterprise Edition 🚀",
+		Message:     "Flatcar GitOps K3s demo",
 		Timestamp:   time.Now().UTC(),
 		Hostname:    hostname,
-		Version:     "v2.0.0",
+		Version:     "dev",
 		Uptime:      time.Since(startTime).Truncate(time.Second).String(),
 		Environment: env,
 	}

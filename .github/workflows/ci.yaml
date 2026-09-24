@@ -2,13 +2,12 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [ master ]
   pull_request:
-    branches: [ master, main ]
+    branches: [ master ]
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   test-and-lint:
@@ -21,7 +20,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: go.mod
           cache: true
 
       - name: Verify Dependencies
@@ -39,6 +38,14 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install YAML parser
+        run: python3 -m pip install PyYAML==6.0.3
 
       - name: Validate YAML Syntax
         run: |
@@ -58,7 +65,10 @@ jobs:
     name: Multi-Arch Container Build & Push
     needs: [test-and-lint, validate-manifests]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    permissions:
+      contents: write
+      packages: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -83,7 +93,7 @@ jobs:
           images: ghcr.io/${{ github.repository_owner }}/devops-flex-api
           tags: |
             type=raw,value=latest
-            type=sha,format=short
+            type=raw,value=${{ github.sha }}
 
       - name: Build and Push Multi-Arch Image
         uses: docker/build-push-action@v5
@@ -96,3 +106,12 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Promote built image in GitOps manifest
+        run: |
+          sed -i "s|image: ghcr.io/shipitdev/devops-flex-api:.*|image: ghcr.io/shipitdev/devops-flex-api:${GITHUB_SHA}|" k8s/deployment.yaml
+          git add k8s/deployment.yaml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "Pin app image to ${GITHUB_SHA}"
+          git push origin HEAD:master

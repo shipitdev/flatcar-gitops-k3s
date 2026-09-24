@@ -24,11 +24,11 @@ func TestRootHandler(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if res.Version != "v2.0.0" {
-		t.Errorf("expected version v2.0.0, got %s", res.Version)
+	if res.Version != "dev" {
+		t.Errorf("expected version dev, got %s", res.Version)
 	}
 
-	if !strings.Contains(res.Message, "Enterprise Edition") {
+	if !strings.Contains(res.Message, "Flatcar GitOps K3s demo") {
 		t.Errorf("unexpected message: %s", res.Message)
 	}
 }

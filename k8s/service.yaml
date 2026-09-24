@@ -8,13 +8,14 @@ metadata:
     app.kubernetes.io/name: devops-flex-api
     app.kubernetes.io/component: backend
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app: devops-flex-api
   ports:
   - name: http
     port: 80
     targetPort: 8080
+    nodePort: 30080
     protocol: TCP
   - name: metrics
     port: 8080

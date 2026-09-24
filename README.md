@@ -1,171 +1,67 @@
-# Flatcar GitOps K3s Cluster 🚀
+# Flatcar + K3s GitOps lab
 
-[![CI/CD Pipeline](https://github.com/shipitdev/flatcar-gitops-k3s/actions/workflows/ci.yaml/badge.svg)](https://github.com/shipitdev/flatcar-gitops-k3s/actions/workflows/ci.yaml)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.24-00ADD8?logo=go)](app/main.go)
-[![Flatcar Linux](https://img.shields.io/badge/Flatcar-Container%20Linux-00A98F?logo=linux)](https://www.flatcar.org)
-[![Kubernetes K3s](https://img.shields.io/badge/Kubernetes-K3s%20v1.31-FFC61E?logo=kubernetes)](https://k3s.io)
-[![FluxCD](https://img.shields.io/badge/GitOps-FluxCD%20v2-5468FF?logo=flux)](https://fluxcd.io)
-[![Prometheus](https://img.shields.io/badge/Metrics-Prometheus-E6522C?logo=prometheus)](https://prometheus.io)
+A single-node QEMU lab for bootstrapping [Flatcar Container Linux](https://www.flatcar.org/), K3s, and Flux. A small Go HTTP service provides a concrete workload for testing the path from a Git commit to a Kubernetes rollout. This is a local systems project, not a production cluster.
 
-An enterprise-grade, immutable infrastructure and automated **GitOps** pipeline running on **Flatcar Container Linux** via QEMU. Zero manual setup, fully declarative from bare-metal bootstrap to application lifecycle and observability.
+## How it works
 
----
-
-## Architecture Overview
-
-```
-                        +----------------------------------------------------+
-                        |           GitHub (shipitdev/flatcar-gitops-k3s)    |
-                        |   - Go Microservice Code (/app)                    |
-                        |   - Declarative Manifests (/k8s)                   |
-                        +-------------------------+--------------------------+
-                                                  |
-                     +----------------------------+----------------------------+
-                     | push event                                              | 1-minute poll
-                     v                                                         v
-        +----------------------------+                          +-------------------------------+
-        |    GitHub Actions CI/CD    |                          |   FluxCD GitOps Controller    |
-        |  - Unit Tests & Linting    |                          |   (In-Cluster Reconciler)     |
-        |  - Multi-Arch Docker Build |                          +---------------+---------------+
-        |  - Push to GHCR Registry   |                                          |
-        +-------------+--------------+                                          | Applies Kustomization
-                      |                                                         v
-                      v                                         +-------------------------------+
-        +----------------------------+                          |       K3s Kubernetes Engine   |
-        |       GHCR Registry        |                          |   - Deployment (RollingUpdate)|
-        |  (linux/amd64, arm64)      | <----------------------- |   - HorizontalPodAutoscaler   |
-        +----------------------------+    Pulls New Container   |   - ServiceMonitor (/metrics) |
-                                                                +---------------+---------------+
-                                                                                |
-                                                                                v
-                                                                +-------------------------------+
-                                                                |     Flatcar Container Linux   |
-                                                                |   - Ignition / Butane Boot    |
-                                                                |   - Read-Only OS Filesystem   |
-                                                                |   - Hardened systemd Units    |
-                                                                +-------------------------------+
+```text
+flatcar.bu -> Ignition -> Flatcar VM -> K3s -> Flux GitRepository/Kustomization
+                                                      |
+                                                      v
+GitHub Actions -> Go tests -> amd64/arm64 image -> GHCR -> k8s/deployment.yaml
+                                                      |
+                                                      v
+                                                K3s Deployment
 ```
 
----
+On `master`, [GitHub Actions](.github/workflows/ci.yaml) runs Go tests and manifest validation, builds `linux/amd64` and `linux/arm64` images, then commits the built image's full commit-SHA tag to [`k8s/deployment.yaml`](k8s/deployment.yaml). Flux polls this repository every minute and reconciles [`k8s/`](k8s/). The image-update commit made by `GITHUB_TOKEN` does not start another workflow run.
 
-## Highlights & Engineering Features
+The service uses a non-root distroless image, resource limits, Kubernetes health probes, and a `/metrics` endpoint. An HPA manifest is included; autoscaling depends on working CPU metrics and enough load. [`k8s/servicemonitor.yaml`](k8s/servicemonitor.yaml) is an optional example for clusters with Prometheus Operator; it is deliberately *not* part of the default Kustomization because the local K3s cluster does not install that CRD.
 
-- **Immutable OS Architecture**: Runs on Flatcar Container Linux where `/usr` is read-only. Configuration is managed entirely declaratively via **Butane** / **Ignition** (`flatcar.bu`), eliminating configuration drift.
-- **Zero-Touch Multi-Arch Provisioning**: Automatically detects CPU architecture (`x86_64` vs Apple Silicon `arm64`) and configures native hardware virtualization (`hvf` on macOS, `kvm` on Linux).
-- **Automated GitOps Reconciliation**: FluxCD v2 runs inside the cluster, polling Git every 60 seconds and auto-healing the cluster to match the declared desired state without manual `kubectl` access.
-- **Built-in Cloud-Native Observability**:
-  - The Go microservice exposes standard **Prometheus metrics** on `/metrics` (`http_requests_total`, `http_request_duration_seconds`, process/runtime stats).
-  - Production **Kubernetes Probes**: `/healthz` (liveness) and `/readyz` (readiness).
-  - Pre-configured `ServiceMonitor` for seamless Prometheus Operator scraping.
-- **Auto-Scaling & Resilience**:
-  - Declarative `HorizontalPodAutoscaler` (HPA) targeting CPU utilization.
-  - Hardened non-root Distroless container image (`USER 65532:65532`).
-  - Graceful termination signal handling (`SIGINT`/`SIGTERM`) with active connection draining.
-- **End-to-End Multi-Arch CI/CD Pipeline**:
-  - GitHub Actions workflow tests Go code, validates Kustomize/YAML syntax, builds multi-arch container images (`linux/amd64` and `linux/arm64`), and publishes directly to GitHub Container Registry (GHCR).
+## Run locally
 
----
-
-## Repository Layout
-
-```
-.
-├── ci/
-│   └── ci.yaml               # GitHub Actions CI/CD multi-arch pipeline
-├── app/
-│   ├── Dockerfile            # Multi-stage, multi-arch Distroless build
-│   ├── main.go               # Go microservice with Prometheus & health endpoints
-│   └── main_test.go          # Unit and benchmark tests
-├── k8s/
-│   ├── kustomization.yaml    # Kustomize entrypoint for FluxCD
-│   ├── deployment.yaml       # Deployment manifest with probes & resource limits
-│   ├── service.yaml          # ClusterIP service exposing app & metrics ports
-│   ├── hpa.yaml              # Horizontal Pod Autoscaler (1-5 replicas)
-│   └── servicemonitor.yaml   # Prometheus Operator scraping configuration
-├── flatcar.bu                # Butane declarative OS & K3s bootstrap config
-├── boot.sh                   # Universal multi-arch bootstrapper for QEMU
-├── go.mod                    # Go module definition
-└── README.md
-```
-
----
-
-## Quickstart
-
-### Prerequisites
-- macOS (Apple Silicon / Intel) or Linux
-- QEMU (`brew install qemu` or `apt-get install qemu-system`)
-- Container runtime (`podman` or `docker`) or `butane` CLI
-
-### Launch the Cluster
-Run the single-entrypoint bootstrapper:
+Prerequisites: QEMU, Butane (or Docker/Podman to run Butane), and network access to Flatcar, GitHub, and GHCR. The script selects the ARM64 UEFI image on ARM hosts and the AMD64 image on x86-64 hosts. Budget at least 4 GiB of memory for the VM. The GHCR image must have been published by a successful CI run *and made public* before the workload can start. GitHub creates new container packages as private by default; the owner must change the visibility of `devops-flex-api` in GitHub Packages after its first publication (or configure a Kubernetes image-pull secret).
 
 ```bash
 ./boot.sh
 ```
 
-The script will automatically:
-1. Transpile `flatcar.bu` into `config.ign`.
-2. Fetch the correct multi-arch Flatcar production QEMU image.
-3. Boot the headless Flatcar VM with hardware acceleration.
-4. Auto-install K3s into `/opt/bin` and bootstrap FluxCD.
-5. Forward host port `8080` to the guest microservice.
+The script downloads the Flatcar image and QEMU wrapper on first use. It starts QEMU with `-snapshot`, so VM writes are discarded when the VM exits; each run reprovisions from Ignition. The host forwards port `8080` to the Kubernetes Service's NodePort `30080`. Bootstrapping and image pulls take time; wait for Flux and the Deployment to become ready before testing the app.
 
----
+Check from the VM console with `sudo /opt/bin/k3s kubectl` (K3s keeps its kubeconfig private by default):
 
-## Verifying the Deployment
-
-Once booted, test the service directly from your host machine:
-
-### 1. Application Endpoint
 ```bash
-curl -s http://localhost:8080 | jq
-```
-```json
-{
-  "message": "Flatcar GitOps K3s Cluster: Enterprise Edition 🚀",
-  "timestamp": "2026-09-07T18:00:00Z",
-  "hostname": "flatcar-localhost",
-  "version": "v2.0.0",
-  "uptime": "1m42s",
-  "environment": "production"
-}
+sudo /opt/bin/k3s kubectl -n flux-system get gitrepositories,kustomizations
+sudo /opt/bin/k3s kubectl get deployments,pods,services
+sudo /opt/bin/k3s kubectl -n flux-system logs deployment/kustomize-controller --tail=50
 ```
 
-### 2. Kubernetes Health Probes
+Then, from the host:
+
 ```bash
-curl -i http://localhost:8080/healthz
-curl -i http://localhost:8080/readyz
+curl -f http://localhost:8080/
+curl -f http://localhost:8080/healthz
+curl -f http://localhost:8080/readyz
+curl -fsS http://localhost:8080/metrics | grep http_requests_total
 ```
 
-### 3. Prometheus Metrics Endpoint
-```bash
-curl -s http://localhost:8080/metrics | grep http_
-```
-```promql
-# HELP http_requests_total Total number of HTTP requests processed...
-# TYPE http_requests_total counter
-http_requests_total{method="GET",path="/",status="200"} 4
-# HELP http_request_duration_seconds Histogram of response latency...
-# TYPE http_request_duration_seconds histogram
-http_request_duration_seconds_bucket{method="GET",path="/",le="0.005"} 4
-```
+To test reconciliation, change a field under `k8s/`, commit, and push to `master`; inspect the Flux Kustomization and the resulting Kubernetes object. Changing `app/` triggers a new image build and a subsequent manifest commit. If Actions cannot push to `master` (for example, because of branch protection), promote the built SHA by updating the image tag in `k8s/deployment.yaml` yourself.
 
----
+## Scope and limitations
 
-## GitOps in Action
+- This is one disposable local node, not a highly available or production-ready setup.
+- Bootstrap downloads pinned K3s and Flux releases, but Flatcar's `stable/current` image changes over time. For repeatable OS tests, pin a Flatcar release and verify the downloaded artifacts.
+- QEMU's wrapper forwards host port `8080` without explicitly restricting the listen address. Use this demo only on a trusted host/network or firewall that port; the Kubernetes API is not forwarded.
+- `/healthz` and `/readyz` report the Go process's HTTP availability, not downstream dependency health.
+- CI and unit tests validate build inputs. An end-to-end QEMU boot and Flux reconciliation test is not part of CI.
 
-To trigger an automatic deployment:
-1. Make a change in `k8s/` or update application logic in `app/`.
-2. Commit and push:
-   ```bash
-   git commit -am "feat: tune resource allocations"
-   git push origin master
-   ```
-3. Watch FluxCD detect the commit and reconcile the cluster within 60 seconds without manual intervention.
+## Layout
 
----
+- [`boot.sh`](boot.sh): Flatcar QEMU download and VM launch
+- [`flatcar.bu`](flatcar.bu): Ignition/systemd bootstrap of K3s and Flux
+- [`k8s/flux-sync.yaml`](k8s/flux-sync.yaml): Flux GitRepository and Kustomization resources
+- [`k8s/`](k8s/): workload, NodePort Service, and optional observability manifests
+- [`app/`](app/): Go service, tests, and multi-architecture Dockerfile
+- [`.github/workflows/ci.yaml`](.github/workflows/ci.yaml): test, build, publish, and image promotion
 
-## License
-Apache License 2.0. See [LICENSE](LICENSE) for details.
+Licensed under [Apache-2.0](LICENSE).

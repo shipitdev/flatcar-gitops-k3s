@@ -34,7 +34,7 @@ spec:
         fsGroup: 65532
       containers:
       - name: api
-        image: ghcr.io/shipitdev/devops-flex-api:latest
+        image: ghcr.io/shipitdev/devops-flex-api:2f600bf218da29719c7e5bc5f677bd8bac44f189
         imagePullPolicy: IfNotPresent
         ports:
         - name: http

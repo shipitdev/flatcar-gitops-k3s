@@ -4,6 +4,23 @@ storage:
   directories:
     - path: /opt/bin
       mode: 0755
+  files:
+    - path: /etc/systemd/network/10-qemu.network
+      mode: 0644
+      contents:
+        inline: |
+          [Match]
+          Name=eth0
+
+          [Network]
+          DHCP=yes
+          DNS=1.1.1.1
+
+          [DHCPv4]
+          UseDNS=no
+
+          [IPv6AcceptRA]
+          UseDNS=no
 systemd:
   units:
     - name: install-k3s.service
@@ -19,7 +36,7 @@ systemd:
         Type=oneshot
         RemainAfterExit=yes
         ExecStartPre=/usr/bin/mkdir -p /opt/bin
-        ExecStart=:/bin/sh -c 'ARCH=$(uname -m); if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then SUFFIX="-arm64"; else SUFFIX=""; fi; /usr/bin/curl -sfL "https://github.com/k3s-io/k3s/releases/download/v1.35.8%2Bk3s1/k3s$SUFFIX" -o /opt/bin/k3s'
+        ExecStart=:/bin/sh -c 'ARCH=$(uname -m); if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then SUFFIX="-arm64"; else SUFFIX=""; fi; /usr/bin/curl -sfL "https://github.com/k3s-io/k3s/releases/download/v1.35.8%%2Bk3s1/k3s$SUFFIX" -o /opt/bin/k3s'
         ExecStartPost=/usr/bin/chmod +x /opt/bin/k3s
 
         [Install]

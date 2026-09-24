@@ -54,7 +54,21 @@ if [ ! -f "${IMG_NAME}" ]; then
     echo "✓ Image ready: ${IMG_NAME}"
 fi
 
-if [ "${FLATCAR_ARCH}" = "arm64-usr" ]; then
+WRAPPER_FIRMWARE_ARGS=()
+QEMU_FIRMWARE_ARGS=()
+if [ "${OS}" = "darwin" ] && [ "${FLATCAR_ARCH}" = "arm64-usr" ]; then
+    if ! command -v brew >/dev/null 2>&1; then
+        echo "ERROR: Homebrew QEMU firmware is required on macOS ARM64."
+        exit 1
+    fi
+    EDK2_CODE="$(brew --prefix qemu)/share/qemu/edk2-aarch64-code.fd"
+    if [ ! -f "${EDK2_CODE}" ]; then
+        echo "ERROR: QEMU firmware not found: ${EDK2_CODE}"
+        exit 1
+    fi
+    WRAPPER_FIRMWARE_ARGS=(-R '' -W '')
+    QEMU_FIRMWARE_ARGS=(-bios "${EDK2_CODE}")
+elif [ "${FLATCAR_ARCH}" = "arm64-usr" ]; then
     for FIRMWARE in "${IMAGE_PREFIX}_efi_code.qcow2" "${IMAGE_PREFIX}_efi_vars.qcow2"; do
         if [ ! -f "${FIRMWARE}" ]; then
             curl -fsSL "${BASE_URL}/${FIRMWARE}" -o "${FIRMWARE}"
@@ -75,5 +89,6 @@ echo "=========================================================="
     -i config.ign \
     -M 4096 \
     -f 8080:30080 \
-    -- -snapshot -smp 2 -nographic \
+    "${WRAPPER_FIRMWARE_ARGS[@]}" \
+    -- -snapshot -smp 2 -nographic "${QEMU_FIRMWARE_ARGS[@]}" \
     "$@"

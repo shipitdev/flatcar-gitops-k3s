@@ -20,13 +20,15 @@ The service uses a non-root distroless image, resource limits, Kubernetes health
 
 ## Run locally
 
-Prerequisites: QEMU, Butane (or Docker/Podman to run Butane), and network access to Flatcar, GitHub, and GHCR. The script selects the ARM64 UEFI image on ARM hosts and the AMD64 image on x86-64 hosts. Budget at least 4 GiB of memory for the VM. The GHCR image must have been published by a successful CI run *and made public* before the workload can start. GitHub creates new container packages as private by default; the owner must change the visibility of `devops-flex-api` in GitHub Packages after its first publication (or configure a Kubernetes image-pull secret).
+Prerequisites: QEMU, Butane (or Docker/Podman to run Butane), and network access to Flatcar, GitHub, and GHCR. On Apple Silicon, use Homebrew's QEMU package: its EDK2 firmware avoids a boot hang observed with Flatcar's bundled UEFI firmware under HVF. The script selects the ARM64 UEFI image on ARM hosts and the AMD64 image on x86-64 hosts. Budget at least 4 GiB of memory for the VM. The published GHCR image must be anonymously pullable; if a newly created package is private, make it public in GitHub Packages or configure an image-pull secret. This lab sets the VM's DNS resolver to `1.1.1.1` because QEMU's default DNS proxy did not work on the tested macOS host; change [`flatcar.bu`](flatcar.bu) if your network blocks that resolver.
 
 ```bash
 ./boot.sh
 ```
 
 The script downloads the Flatcar image and QEMU wrapper on first use. It starts QEMU with `-snapshot`, so VM writes are discarded when the VM exits; each run reprovisions from Ignition. The host forwards port `8080` to the Kubernetes Service's NodePort `30080`. Bootstrapping and image pulls take time; wait for Flux and the Deployment to become ready before testing the app.
+
+Verified on macOS Apple Silicon with QEMU 11.1.0 and Flatcar 4757.2.0: a fresh VM boot installed K3s v1.35.8+k3s1, reconciled Flux v2.9.5, started the API workload, and served all four endpoints below without manual intervention.
 
 Check from the VM console with `sudo /opt/bin/k3s kubectl` (K3s keeps its kubeconfig private by default):
 
